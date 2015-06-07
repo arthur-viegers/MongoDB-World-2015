@@ -1,0 +1,18 @@
+//MongoDB World 2015
+//IoT - Path to Production
+//Presenters - John Page ( @johnlpage ) & Arthur Viegers (@viegers)
+
+match0 = { $match: { "readings.boxid": 11 } }
+
+unwind0 = { $unwind: "$readings" }
+
+sort0 = { $sort: { "readings.balloonid": 1, "readings.timestamp" : 1 } }
+
+group0 = { $group: { _id: "$readings.balloonid", colour: { $last: "$readings.colour" }, 
+	timestamp: { $last: "$readings.timestamp" }, xpos: { $last: "$readings.xpos" }, 
+	ypos: { $last: "$readings.ypos" } } }
+
+match1 = { $match: { timestamp: { $lte: 1432754974 } } }
+	
+db.balloons.aggregate([ match0, unwind0, sort0, group0, match1 ])
+

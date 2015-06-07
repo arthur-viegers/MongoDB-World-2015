@@ -1,0 +1,32 @@
+//MongoDB World 2015
+//IoT - Path to Production
+//Presenters - John Page ( @johnlpage ) & Arthur Viegers (@viegers)
+
+match0 = { $match: { "readings.boxid": 11 } }
+
+unwind0 = { $unwind: "$readings" }
+
+boxWidth = 25 / 3
+boxHeight = 20 / 3
+
+floor = function(a) { return { $subtract: [ a, { $mod: [ a, 1 ] } ] } }
+div = function(a, b) { return floor({ $divide: [ a, b ] }) }
+
+boxid = function(x, y) { return { $add: [ { $multiply: [ x, 3 ] }, y ] } }
+
+project0 = { $project: { _id: 0, colour: "$readings.colour",
+	timestamp: div("$readings.timestamp", 10),
+	boxid: boxid(div("$readings.xpos", boxWidth), div("$readings.ypos", boxHeight)),
+	timedelta: "$readings.timedelta" } }
+
+group0 = { $group: 
+	{ _id: { colour: "$colour", timestamp: "$timestamp", boxid: "$boxid" }, 
+	count: { $sum: "$timedelta" } } }
+
+group1 = { $group: { _id: { colour: "$_id.colour", timestamp: "$_id.timestamp" }, 
+	data: { $push: { boxid: "$_id.boxid", count: "$count" } } } }
+
+project1 = { $project: { _id: 0, colour: "$_id.colour", timestamp: "$_id.timestamp", data: 1 } }
+	
+db.balloons.aggregate([ match0, unwind0, project0, group0, group1, project1 ])
+

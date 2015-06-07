@@ -1,0 +1,106 @@
+//MongoDB World 2015
+//IoT - Path to Production
+//Presenters - John Page ( @johnlpage ) & Arthur Viegers (@viegers)
+
+
+import com.mongodb.*;
+import com.mongodb.util.*;
+import com.iglobus.queuewrapper.*;
+
+MongoClient mongo;
+DBCollection readings;
+QueueWrapper queue;
+
+DBCollection heatmaps;
+
+
+
+int opCount=0;
+int startTime;
+
+// Runs once on startup 
+
+void setup()
+{
+
+size(400, 240);
+textSize(32);
+startTime = millis();
+
+try { 
+    mongo = new MongoClient();
+}
+catch(Exception e) { 
+    println(e);
+    exit();
+}
+readings = mongo.getDB("iglobus").getCollection("balloons");
+
+heatmaps = mongo.getDB("iglobus").getCollection("heatmaps");
+
+readings.createIndex(new BasicDBObject("balloonid", 1));
+readings.createIndex(new BasicDBObject("readings.boxid", 1));
+queue = new QueueWrapper("swp://api.iglobus.net/rq");
+
+}
+
+//Runs in a Loop
+
+void draw()
+{
+
+int timeNow = millis();
+int timeTaken = timeNow - startTime;
+
+BulkWriteOperation bulk = readings.initializeUnorderedBulkOperation();
+
+BulkWriteOperation hmBulk = heatmaps.initializeUnorderedBulkOperation();
+
+for(int r=0;r<5000;r++)
+{
+  BalloonInfo balloon = queue.GetMessage();
+  if (balloon != null) 
+  {
+    BasicDBObject record = new BasicDBObject(balloon.GetAsHash());
+    opCount++;
+
+    int balloonid = record.getInt("balloonid");
+    
+    BasicDBObject query = new BasicDBObject("balloonid",balloonid);
+    query.append("bcount",new BasicDBObject("$lt",100));
+    // { "balloonid" : 1234 , bcount : { "$lt" : 100 }}
+    // BalloonID = 1234 AND bcount < 100
+    BasicDBObject update = new BasicDBObject("$push",new BasicDBObject("readings",record));
+    update.append("$inc",new BasicDBObject("bcount",1));
+    
+    bulk.find(query).upsert().updateOne(update);
+
+
+  BasicDBObject hmUpdate;
+  String bColour = "red";
+  if (record.getInt("colour")==1) bColour="blue";
+
+  hmUpdate = new BasicDBObject("$inc", new BasicDBObject( "map."+record.getInt("xpos")+"."+record.getInt("ypos")+"."+bColour, 1));
+  // db.headmaps.update({_id:1234},{$inc : { "map.5.3.red" , 1 }}})
+
+  hmBulk.find(new BasicDBObject("_id", record.getInt("boxid"))).upsert().update(hmUpdate);  
+    
+    
+  }
+}
+
+bulk.execute();
+hmBulk.execute();
+
+if (timeTaken > 1000)
+{
+  background(0);
+  textAlign(CENTER);
+  text("Ops/s: " + ( opCount * 1000 / timeTaken ), 200, 120);
+  opCount=0;
+  startTime = millis();
+}
+
+}
+
+
